@@ -34,8 +34,11 @@ Java_io_github_brucewind_softcodec_StreamHelper_compressBegin(JNIEnv *env,
                             "zerolatency"); //set encoder params
   en->param->i_width = width;
   en->param->i_height = height;
+  en->param->i_csp = X264_CSP_I420;
   en->param->i_threads = 1;/* encode multiple frames in parallel */
   en->param->b_sliced_threads = 1;
+
+//  en->param->i_level_idc = 31; /* 编码等级*/
   en->param->i_bframe_adaptive = X264_B_ADAPT_FAST;
   en->param->i_bframe_pyramid = X264_B_PYRAMID_NONE; /*允许部分B为参考帧,可选值为0，1，2 */
   en->param->b_intra_refresh = 0; //用周期帧内刷新替代IDR

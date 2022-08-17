@@ -39,7 +39,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback,
     private final int VIDEOBITRATE = 512 *4;
     private final int FPS = 60;
     private RtmpHelper mRtmpHelper = new RtmpHelper();
-    private String mRtmpPushUrl = "rtmp://192.168.50.14/live/live";
+    private String mRtmpPushUrl = "rtmp://101.43.66.101/live/123";
     private long mEncoderPointer = 0;
     private byte[] mH264Buff = null;
     private int mCurrentTime;

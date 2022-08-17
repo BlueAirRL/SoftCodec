@@ -73,6 +73,10 @@ Java_io_github_brucewind_softcodec_StreamHelper_compressBegin(JNIEnv *env,
     param.iSpatialLayerNum = 1;
     //if (sliceMode != SM_SINGLE_SLICE && sliceMode != SM_DYN_SLICE) //SM_DYN_SLICE don't support multi-thread now
     param.iMultipleThreadIdc = 2;
+    param.eSpsPpsIdStrategy = SPS_LISTING;
+    param.uiMaxNalSize = 0;
+    param.uiIntraPeriod = 30;
+
     for (int i = 0; i < param.iSpatialLayerNum; i++) {
         param.sSpatialLayers[i].iVideoWidth = width >> (param.iSpatialLayerNum - 1 - i);
         param.sSpatialLayers[i].iVideoHeight = height >> (param.iSpatialLayerNum - 1 - i);
