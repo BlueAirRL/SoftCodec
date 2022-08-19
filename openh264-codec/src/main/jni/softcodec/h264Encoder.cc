@@ -11,6 +11,7 @@ unsigned char *sps;
 unsigned char *pps;
 int sps_len;
 int pps_len;
+int first = 0;
 
 /**
  *
@@ -64,6 +65,7 @@ Java_io_github_brucewind_softcodec_StreamHelper_compressBegin(JNIEnv *env,
             &param);//call InitializeExt must have a extension parameter with this default.
     param.iUsageType = CAMERA_VIDEO_REAL_TIME;  //tell openH264 steam type is LIVE.
     param.iRCMode = RC_BITRATE_MODE;
+    param.iMaxBitrate = UNSPECIFIED_BIT_RATE;
     param.fMaxFrameRate = fps;                  //fps
     param.iPicWidth = width;
     param.iPicHeight = height;
@@ -75,7 +77,9 @@ Java_io_github_brucewind_softcodec_StreamHelper_compressBegin(JNIEnv *env,
     param.iMultipleThreadIdc = 2;
     param.eSpsPpsIdStrategy = SPS_LISTING;
     param.uiMaxNalSize = 0;
-    param.uiIntraPeriod = 30;
+    param.uiIntraPeriod = fps*2;
+    param.iMinQp = 20;
+    param.iMaxQp = 30;
 
     for (int i = 0; i < param.iSpatialLayerNum; i++) {
         param.sSpatialLayers[i].iVideoWidth = width >> (param.iSpatialLayerNum - 1 - i);
@@ -94,6 +98,40 @@ Java_io_github_brucewind_softcodec_StreamHelper_compressBegin(JNIEnv *env,
         return 0;
     }
     return (jlong) encoder;
+}
+extern "C" JNIEXPORT  jint
+Java_io_github_brucewind_softcodec_StreamHelper_requestKeyFrame(JNIEnv * env ,
+jobject thiz, jlong){
+    //find initialized encode by pointer address.
+    ISVCEncoder *en = (ISVCEncoder *) _encoder;
+    if(!en){
+        return -1;
+    }
+    return en->ForceIntraFrame(true);
+}
+
+extern "C" JNIEXPORT jint
+Java_io_github_brucewind_softcodec_StreamHelper_setBitrate(JNIEnv * env ,
+                                                           jobject thiz, jlong, jint bitrate){
+    //find initialized encode by pointer address.
+    ISVCEncoder *en = (ISVCEncoder *) _encoder;
+    if(!en){
+        return -1;
+    }
+    return en->SetOption(ENCODER_OPTION_BITRATE, &bitrate);
+}
+
+
+extern "C" JNIEXPORT jint
+Java_io_github_brucewind_softcodec_StreamHelper_setFramerate(JNIEnv * env ,
+                                                             jobject thiz, jlong, jint framerate){
+    //find initialized encode by pointer address.
+    ISVCEncoder *en = (ISVCEncoder *) _encoder;
+    if(!en){
+        return -1;
+    }
+    return en->SetOption(ENCODER_OPTION_FRAME_RATE, &framerate);
+
 }
 
 /**
@@ -115,7 +153,7 @@ using namespace std;
  * 2. transferring the NALUs to RTMP server.
  * return 0 means everything is ok.
  */
-extern "C" JNIEXPORT  jint Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(
+extern "C" JNIEXPORT  jobject Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(
         JNIEnv *env,
         jobject thiz,
         jlong handler,//it is a pointer.
@@ -124,8 +162,8 @@ extern "C" JNIEXPORT  jint Java_io_github_brucewind_softcodec_StreamHelper_compr
         jbyteArray out) {
 
 
-    if (!isConnected())
-        return 0;
+//    if (!isConnected())
+//        return 0;
 
 
     int width = param.iPicWidth;
@@ -148,19 +186,26 @@ extern "C" JNIEXPORT  jint Java_io_github_brucewind_softcodec_StreamHelper_compr
     unsigned char *pTemp = (unsigned char *) h264_buf;
     int nPicSize = width * height;
 
+    jclass cls = env->FindClass("io/github/brucewind/softcodec/H264Info");
+    jmethodID jmi = env->GetMethodID(cls,"<init>", "()V");
+    jmethodID  jsetFrameType = env->GetMethodID(cls,"setFrameType","(I)V");
+    jmethodID  jsetEncodedLen = env->GetMethodID(cls,"setEncodedLen","(I)V");
+    jobject jh264 = env->NewObject(cls, jmi);
+
+
+
 
     //1. the first step: encode header with PPS & SPS.
 //    if (first == 0) {
-//        SFrameBSInfo fbi = {0};
-//        int pps_suc = _encoder->EncodeParameterSets(&fbi);
-//        if (pps_suc != 0) {
-//            ALOGE("PPS & SPS encoding got failed.");
-//            return -1;
-//        }
-//
-//        handle_sps_pps(fbi);
-
+        SFrameBSInfo fbi = {0};
+        int pps_suc = _encoder->EncodeParameterSets(&fbi);
+        if (pps_suc != 0) {
+            ALOGE("PPS & SPS encoding got failed.");
+            return nullptr;
+        }
 //    }
+
+//        handle_sps_pps(fbi);
 
 
     //encode and  store ouput bistream
@@ -187,21 +232,21 @@ extern "C" JNIEXPORT  jint Java_io_github_brucewind_softcodec_StreamHelper_compr
         } else {
             ALOGE("encodeFrame falied, the result is %d.", rv);
         }
-        return -1;
+        return nullptr;
     }
     if (info.iLayerNum <= 0) {
         ALOGE("something wrong in \"i_frame_size < 0\".");
-        return -1;
+        return nullptr;
     }
     if (info.iLayerNum > 1) {
         ALOGI("data lost due to that iLayerNum=%d.", info.iLayerNum);
     }
     if (info.eFrameType == videoFrameTypeInvalid) {
         ALOGE("videoFrameTypeInvalid");
-        return 0;
+        return nullptr;
     } else if (info.eFrameType == videoFrameTypeSkip) {//it need to skip.
         ALOGW("skip this frame");
-        return 0;
+        return nullptr;
     } else {
         ALOGD("FrameType : %d, layertype: %d.", info.sLayerInfo[i].eFrameType,
               info.sLayerInfo[i].uiLayerType);
@@ -213,15 +258,23 @@ extern "C" JNIEXPORT  jint Java_io_github_brucewind_softcodec_StreamHelper_compr
      * transmit serveral NALUs to RTMP server.
      * Two NAL types : SPS & PPS are very important.
      */
+     int frameType;
+     int spsLen = 0, ppsLen = 0;
     for (i = 0; i < info.iLayerNum; i++) {
 //        int fType = info.sLayerInfo[i].eFrameType;//it is NON_VIDEO_CODING_LAYER
 //        if (info.sLayerInfo[i].uiLayerType == NON_VIDEO_CODING_LAYER) {//this NAL type is SPS.
 //        }
         const SLayerBSInfo layerInfo = info.sLayerInfo[i];
+        frameType = layerInfo.eFrameType;
+        env->CallVoidMethod(jh264,jsetFrameType,frameType);
         unsigned char *buffer = layerInfo.pBsBuf;
+
+
         for (auto index_nal = 0; index_nal < layerInfo.iNalCount; index_nal++) {
 
             const int buf_len = layerInfo.pNalLengthInByte[index_nal];
+
+
             //detect NAL
             int NAL_type = 0;
             int start_len = 0;
@@ -239,22 +292,36 @@ extern "C" JNIEXPORT  jint Java_io_github_brucewind_softcodec_StreamHelper_compr
                     ALOGE("start code not found.");
                 }
             }
-            ALOGD("NAL type : %d.",NAL_type);
+            ALOGD("PPPPPPPPP NAL type : %d. buf_len=%d frameType=%d",NAL_type, buf_len, frameType);
             //begin to handle one of NALs.
-            if (NAL_type == NAL_SPS || NAL_type == NAL_PPS) {
-                buffer += start_len;
-                handle_sps_pps(NAL_type, buffer, buf_len - start_len);
-                buffer+=(buf_len - start_len);
-            } else {
-                handle_other_NAL(buffer, buf_len);
-                buffer += buf_len;
+            if (NAL_type == NAL_SPS){
+                spsLen = buf_len;
+                memcpy(pTemp, buffer, buf_len);
             }
+            if (NAL_type == NAL_PPS){
+                ppsLen = buf_len;
+                memcpy(pTemp + spsLen, buffer, buf_len);
+            }
+
+            if (NAL_type == NAL_SPS || NAL_type == NAL_PPS) {
+//                buffer += start_len;
+
+//                handle_sps_pps(NAL_type, buffer, buf_len - start_len);
+//                buffer+=(buf_len - start_len);
+            } else {
+                memcpy(pTemp + spsLen + ppsLen, buffer, buf_len);
+//                handle_other_NAL(buffer, buf_len);
+//                buffer += buf_len;
+            }
+
+            env->CallVoidMethod(jh264, jsetEncodedLen,buf_len + spsLen+ ppsLen );
         }
+
         ALOGD("send_rtmp_video() end");
 
         //release buffers.
         env->ReleaseByteArrayElements(in, nv12_buf, 0);
         env->ReleaseByteArrayElements(out, h264_buf, 0);
     }
-    return result;
+    return jh264;
 }

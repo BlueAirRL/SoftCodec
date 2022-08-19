@@ -26,9 +26,13 @@ class StreamHelper {
      * @param H264
      * @return
      */
-    public native int compressBuffer(long encoder, byte[] NV12, int NV12size, byte[] H264);
+    public native H264Info compressBuffer(long encoder, byte[] NV12, int NV12size, byte[] H264);
 
     public native long compressBegin(int width, int height, int bitrate, int fps);
+
+    public native int requestKeyFrame(long encoder);
+
+    public native int setBitrate(long encoder, int bitrate);
 
     public native int compressEnd(long encoder);
 

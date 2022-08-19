@@ -34,10 +34,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback,
     SurfaceHolder mPreviewHolder;
     byte[] mPreviewBuffer;
     //TODO obtain the a compatible set of size from camera.
-    int width = 640;
-    int height = 480;
+    int width = 1280;
+    int height = 720;
     private final int VIDEOBITRATE = 512 *4;
-    private final int FPS = 60;
+    private final int FPS = 30;
     private RtmpHelper mRtmpHelper = new RtmpHelper();
     private String mRtmpPushUrl = "rtmp://101.43.66.101/live/123";
     private long mEncoderPointer = 0;
@@ -130,7 +130,12 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback,
     @SuppressLint("InlinedApi")
     private void startCamera() {
 
-        mEncoderPointer = mRtmpHelper.compressBegin(width, height, VIDEOBITRATE, FPS);
+        mEncoderPointer = mRtmpHelper.compressBegin(width, height, VIDEOBITRATE, FPS, new RtmpHelper.H264BufferInterface() {
+            @Override
+            public void OnH264(int type, byte[] buffer) {
+
+            }
+        });
         if(mEncoderPointer==0){
             Toast.makeText(this,"encoder init error.",Toast.LENGTH_LONG).show();
             return;
@@ -195,6 +200,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback,
                 i420bytes,
                 i420bytes.length,
             mH264Buff);
+
+
 
     }
 

@@ -15,6 +15,7 @@ unsigned char pps[10];
 int first = 0;
 int sps_len;
 int pps_len;
+bool requestKey = false;
 #define RC_MARGIN 10000 /*bits per sec*/
 JNIEXPORT jlong
 Java_io_github_brucewind_softcodec_StreamHelper_compressBegin(JNIEnv *env,
@@ -53,12 +54,13 @@ Java_io_github_brucewind_softcodec_StreamHelper_compressBegin(JNIEnv *env,
   en->param->analyse.i_me_range = 16;/* 整像素运动估计搜索范围 (from predicted mv) */
   en->param->analyse.i_me_method = X264_ME_DIA;/* 运动估计算法 (X264_ME_*)*/
   en->param->rc.i_lookahead = 0;
-  en->param->i_keyint_max = 30;/* 在此间隔设置IDR关键帧(每过多少帧设置一个IDR帧) */
+  en->param->i_keyint_max = 30 * 2;/* 在此间隔设置IDR关键帧(每过多少帧设置一个IDR帧) */
   en->param->i_scenecut_threshold = 40;/*如何积极地插入额外的I帧 */
-  en->param->rc.i_qp_min = 10; //关键帧最小间隔
-  en->param->rc.i_qp_max = 50; //关键帧最大间隔
+  en->param->rc.i_qp_min = 24; //关键帧最小间隔
+  en->param->rc.i_qp_max = 37; //关键帧最大间隔
   en->param->rc.i_qp_constant = 20;
   en->param->rc.i_bitrate = bitrate; /*设置平均码率 */
+  en->param->rc.i_vbv_max_bitrate = bitrate * 1.2;
   en->param->i_fps_num = fps;/*帧率*/
   en->param->i_fps_den = 1;/*用两个整型的数的比值，来表示帧率*/
   en->param->b_annexb = 1; //different from AVCC structure
@@ -78,6 +80,31 @@ Java_io_github_brucewind_softcodec_StreamHelper_compressBegin(JNIEnv *env,
 
   return (jlong) en;
 
+}
+
+JNIEXPORT jint
+Java_io_github_brucewind_softcodec_StreamHelper_requestKeyFrame(JNIEnv * env ,
+                                                                jobject thiz, jlong handler){
+  requestKey = true;
+  return 0;
+}
+
+JNIEXPORT jint
+Java_io_github_brucewind_softcodec_StreamHelper_setBitrate(JNIEnv * env ,
+                                                           jobject thiz, jlong handler, jint bitrate){
+  x264_param_t  param;
+
+  param.rc.i_rc_method=X264_RC_ABR;
+
+  param.rc.i_vbv_max_bitrate = bitrate * 1.2;
+
+  param.rc.i_bitrate= bitrate;
+
+  param.rc.i_vbv_buffer_size = bitrate*3;
+  //find initialized encode by pointer address.
+  Encoder *en = (Encoder *) handler;
+
+  return x264_encoder_reconfig(en->handle, &param);
 }
 
 /**
@@ -122,7 +149,7 @@ Java_io_github_brucewind_softcodec_StreamHelper_compressEnd(JNIEnv *env,
  * 1. compressing the buffer data into serveral NALUs;
  * 2. transferring the NALUs to RTMP server.
  */
-JNIEXPORT jint Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(
+JNIEXPORT jobject Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(
     JNIEnv *env,
     jobject thiz,
     jlong handler,//it is a pointer.
@@ -131,8 +158,8 @@ JNIEXPORT jint Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(
     jbyteArray out) {
 
 
-  if (!isConnected())
-    return 0;
+//  if (!isConnected())
+//    return 0;
 
 
   //find initialized encode by pointer address.
@@ -151,6 +178,12 @@ JNIEXPORT jint Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(
   unsigned char *pTemp = h264_buf;
   int nPicSize = en->param->i_width * en->param->i_height;
 
+  jclass cls = (*env)->FindClass(env,"io/github/brucewind/softcodec/H264Info");
+  jmethodID jmi = (*env)->GetMethodID(env,cls,"<init>", "()V");
+  jmethodID  jsetFrameType = (*env)->GetMethodID(env,cls,"setFrameType","(I)V");
+  jmethodID  jsetEncodedLen = (*env)->GetMethodID(env, cls,"setEncodedLen","(I)V");
+  jobject jh264 = (*env)->NewObject(env, cls, jmi);
+
   /**
    * YUV => 4:2:0
    * YYYY
@@ -165,6 +198,10 @@ JNIEXPORT jint Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(
   for (i = 0; i < nPicSize / 4; i++) {
     *(u + i) = *(nv12_buf + nPicSize + i * 2);
     *(v + i) = *(nv12_buf + nPicSize + i * 2 + 1);
+  }
+  if(requestKey){
+    en->picture->i_type = X264_TYPE_KEYFRAME;
+    requestKey = false;
   }
 
 
@@ -181,7 +218,7 @@ JNIEXPORT jint Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(
   if (i_frame_size < 0) {
     return -1;
   }
-
+  int frameType = 3;
   /**
    * 2. The second step:
    * transfer several NALUs to RTMP server with foreach.
@@ -197,17 +234,21 @@ JNIEXPORT jint Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(
       pps_len = en->nal[i].i_payload - 4;
       memcpy(pps, en->nal[i].p_payload + 4, pps_len);
       if (first == 0) {
-        send_video_sps_pps(sps, sps_len, pps, pps_len);
+//        send_video_sps_pps(sps, sps_len, pps, pps_len);
         first = 1;
+        frameType = 2;
       }
     } else {
-      send_rtmp_video(en->nal[i].p_payload,
-                      i_frame_size - result,
-                      getSystemTime());
+//      send_rtmp_video(en->nal[i].p_payload,
+//                      i_frame_size - result,
+//                      getSystemTime());
     }
+    (*env)->CallVoidMethod(env, jh264,jsetFrameType,frameType);
+
     pTemp += en->nal[i].i_payload;
     result += en->nal[i].i_payload;
 
+    (*env)->CallVoidMethod(env, jh264,jsetEncodedLen,en->nal[i].i_payload);
     //release buffers.
     (*env)->ReleaseByteArrayElements(env, in, nv12_buf, 0);
     (*env)->ReleaseByteArrayElements(env, out, h264_buf, 0);

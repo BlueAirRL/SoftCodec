@@ -16,6 +16,15 @@
 JNIEXPORT jlong Java_io_github_brucewind_softcodec_StreamHelper_compressBegin(JNIEnv* env,
 		jobject thiz, jint width, jint height, jint bitrate, jint fps);
 
+JNIEXPORT jint
+Java_io_github_brucewind_softcodec_StreamHelper_requestKeyFrame(JNIEnv * env ,
+																jobject thiz, jlong);
+
+JNIEXPORT jint
+Java_io_github_brucewind_softcodec_StreamHelper_setBitrate(JNIEnv * env ,
+														   jobject thiz, jlong, jint bitrate);
+
+
 /*compressEnd
  *結束x264编码
  *handle
@@ -30,7 +39,7 @@ JNIEXPORT jint Java_io_github_brucewind_softcodec_StreamHelper_compressEnd(JNIEn
  *insize nv12 长度
  *out h264
  */
-JNIEXPORT jint Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(JNIEnv* env,
+JNIEXPORT jobject Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(JNIEnv* env,
 		jobject thiz,
 		jlong handle,
 		jbyteArray in,

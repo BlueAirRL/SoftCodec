@@ -26,9 +26,15 @@ class StreamHelper {
      * @param H264, it is unused.
      * @return
      */
-    public native int compressBuffer(long encoder, byte[] I420, int I420Size, byte[] H264);
+    public native H264Info compressBuffer(long encoder, byte[] I420, int I420Size, byte[] H264);
 
     public native long compressBegin(int width, int height, int bitrate, int fps);
+
+    public native int requestKeyFrame(long encoder);
+
+    public native int setBitrate(long encoder, int bitrate);
+
+    public native int setFramerate(long encoder, int framerate);
 
     public native int compressEnd(long encoder);
 

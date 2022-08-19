@@ -17,11 +17,25 @@ width , jint height, jint
 bitrate , jint fps);
 
 extern "C" JNIEXPORT jint
+Java_io_github_brucewind_softcodec_StreamHelper_requestKeyFrame(JNIEnv * env ,
+                                                            jobject thiz, jlong);
+
+extern "C" JNIEXPORT jint
+Java_io_github_brucewind_softcodec_StreamHelper_setBitrate(JNIEnv * env ,
+                                                                jobject thiz, jlong, jint bitrate);
+
+
+extern "C" JNIEXPORT jint
+Java_io_github_brucewind_softcodec_StreamHelper_setFramerate(JNIEnv * env ,
+                                                                jobject thiz, jlong, jint framerate);
+
+
+extern "C" JNIEXPORT jint
 Java_io_github_brucewind_softcodec_StreamHelper_compressEnd(JNIEnv * env ,
 jobject thiz, jlong
 handle );
 
-extern "C" JNIEXPORT jint
+extern "C" JNIEXPORT jobject
 Java_io_github_brucewind_softcodec_StreamHelper_compressBuffer(JNIEnv * env ,
 jobject thiz,
     jlong
@@ -29,4 +43,4 @@ handle ,
 jbyteArray in,
     jint
 insize ,
-jbyteArray out );
+jbyteArray out);

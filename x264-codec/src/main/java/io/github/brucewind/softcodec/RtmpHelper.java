@@ -14,11 +14,17 @@ import java.util.concurrent.atomic.AtomicInteger;
  * It is used to manager picture to be encode, and transfer encoded data to server in {@link ExecutorService}.
  */
 public class RtmpHelper {
-
+  private static String LOGTAG="JLiveCamera_encoder";
   private ExecutorService mRtmpExecutor = Executors.newSingleThreadExecutor();
   private Timer mTimer;
   private final AtomicInteger mFpsAtomic = new AtomicInteger(0);
   private final StreamHelper mStreamHelper = new StreamHelper();
+
+  public interface H264BufferInterface{
+    public void OnH264(int type, byte[] buffer);
+  }
+
+  private H264BufferInterface h264BufferInterface;
 
   /*rtmp*/
   public int rtmpOpen(final String url) {
@@ -64,6 +70,20 @@ public class RtmpHelper {
     mRtmpExecutor.execute(new Runnable() {
       @Override
       public void run() {
+        H264Info info = mStreamHelper.compressBuffer(encoder, NV12, NV12size, H264);
+        if(info == null){
+          return;
+        }
+
+        Log.d(LOGTAG, "compressBuffer("+NV12size+")" + " len="+info.encodedLen);
+        mFpsAtomic.incrementAndGet();
+        if (h264BufferInterface != null && info.encodedLen > 0){
+          byte[] buffer = new byte[info.encodedLen];
+          System.arraycopy(H264, 0, buffer, 0, info.encodedLen);
+//          StreamFile.writeBytes(buffer);
+          h264BufferInterface.OnH264(info.frameType, buffer);
+        }
+
         mStreamHelper.compressBuffer(encoder, NV12, NV12size, H264);
         mFpsAtomic.incrementAndGet();
       }
@@ -71,8 +91,17 @@ public class RtmpHelper {
     return 0;
   }
 
-  public long compressBegin(final int width, int height, int bitrate, int fps) {
+  public long compressBegin(final int width, int height, int bitrate, int fps, H264BufferInterface callback) {
+    h264BufferInterface = callback;
     return mStreamHelper.compressBegin(width, height, bitrate, fps);
+  }
+
+  public int requestKeyFrame(long encoder){
+    return mStreamHelper.requestKeyFrame(encoder);
+  }
+
+  public int setBitrate(long encoder, int bitrate){
+    return mStreamHelper.setBitrate(encoder, bitrate);
   }
 
   public int compressEnd(long encoder) {
